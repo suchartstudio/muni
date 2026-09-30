@@ -2,39 +2,1273 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>ระบบบริหารจัดการภายใน</title>
-  
-  <!-- เชื่อมต่อ Manifest -->
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#1e3a8a">
-  
-  <!-- รองรับ iOS (iPad) -->
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="ระบบราชการ">
-  <link rel="apple-touch-icon" href="https://github.com/suchartstudio/khonkaen/blob/main/logo.png?raw=true">
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบราชการออนไลน์</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background-color: #1e3a8a; }
-    iframe { width: 100%; height: 100%; border: none; display: block; }
+    body { font-family: 'Sarabun', sans-serif; background-color: #f3f4f6; }
+    .hidden { display: none !important; }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: #e5e7eb; border: 1px solid #e5e7eb; }
+    .calendar-day { background: white; min-height: 100px; padding: 4px; display: flex; flex-direction: column; }
+    .calendar-header { background: #1e3a8a; color: white; text-align: center; font-weight: bold; padding: 8px 0; }
+    .event-badge { font-size: 0.75rem; padding: 2px 4px; border-radius: 4px; margin-bottom: 2px; cursor: pointer; line-height: 1.2; word-break: break-word;}
+    .past-event { background-color: #d1d5db !important; color: #6b7280 !important; border-left: 3px solid #9ca3af !important; }
+    
+    /* Chat bubbles */
+    .msg-mine { background-color: #dcf8c6; align-self: flex-end; border-radius: 12px 12px 0 12px; }
+    .msg-other { background-color: #ffffff; align-self: flex-start; border-radius: 12px 12px 12px 0; border: 1px solid #e5e7eb; }
   </style>
 </head>
-<body>
+<body class="text-gray-800 relative">
 
-  <!-- ฝัง Web App URL ของคุณ -->
-  <iframe src="https://script.google.com/macros/s/AKfycbxm_S_Xkj89cURImkDaTS5xfYZfaWEbhVgzHOf9TY1YhZhYhWmx-xNzIx5tQFuwqXUCtQ/exec" allow="camera; microphone; geolocation"></iframe>
+  <!-- เสียงแจ้งเตือนข้อความใหม่ -->
+  <audio id="chatSound" src="https://actions.google.com/sounds/v1/ui/message_notification.ogg" preload="auto"></audio>
 
-  <script>
-    // ลงทะเบียน Service Worker สำหรับ PWA
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js')
-          .then(reg => console.log('PWA Service Worker Registered!'))
-          .catch(err => console.error('PWA Registration Failed:', err));
+  <!-- Modal ปฏิทินกิจกรรม -->
+  <div id="eventModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg p-6 w-full max-w-md shadow-xl relative">
+      <button onclick="closeEventModal()" class="absolute top-3 right-4 text-gray-500 hover:text-red-500 font-bold text-xl">&times;</button>
+      <h3 class="text-xl font-bold mb-4 text-blue-900 border-b pb-2" id="modalEvTitle">หัวข้อกิจกรรม</h3>
+      <div class="space-y-3 mb-4">
+        <p class="flex items-start bg-yellow-50 p-2 rounded"><span class="font-bold w-20 text-yellow-800">📅 วันที่:</span> <span id="modalEvDate" class="font-semibold"></span></p>
+        <p class="flex items-start bg-blue-50 p-2 rounded"><span class="font-bold w-20 text-blue-800">⏰ เวลา:</span> <span id="modalEvTime" class="font-semibold"></span></p>
+        <p class="flex items-start bg-green-50 p-2 rounded"><span class="font-bold w-20 text-green-800">📍 สถานที่:</span> <span id="modalEvLocation" class="font-semibold text-green-900"></span></p>
+        <div>
+          <span class="font-bold text-gray-700">รายละเอียด:</span>
+          <p id="modalEvDesc" class="text-gray-600 mt-1 whitespace-pre-wrap text-sm"></p>
+        </div>
+      </div>
+      <button onclick="closeEventModal()" class="w-full bg-gray-200 text-gray-800 py-2 rounded hover:bg-gray-300 font-bold">ปิดหน้าต่าง</button>
+    </div>
+  </div>
+
+  <!-- Modal ยืนยันการลงนาม -->
+  <div id="signModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg p-6 w-full max-w-sm shadow-xl text-center">
+      <h3 class="text-xl font-bold mb-4">🔐 ยืนยันการลงนาม</h3>
+      <p class="text-sm text-gray-600 mb-4" id="signModalDocName">เอกสาร: -</p>
+      <input type="text" id="confirmSignId" placeholder="กรอกเลข ID 10 หลักของท่าน" maxlength="10" 
+             class="w-full px-4 py-2 border rounded-lg text-center mb-4 focus:ring-2 focus:ring-green-500"
+             oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+      <div class="flex gap-2 justify-center">
+        <button onclick="closeSignModal()" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">ยกเลิก</button>
+        <button id="btnConfirmSign" class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 font-bold">ยืนยันลงนาม</button>
+      </div>
+      <p id="signError" class="text-red-500 mt-2 text-sm hidden">เลข ID ไม่ถูกต้อง</p>
+    </div>
+  </div>
+
+  <!-- Modal สร้าง/แก้ไขกระทู้ -->
+  <div id="forumModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl relative">
+      <button onclick="closeForumModal()" class="absolute top-3 right-4 text-gray-500 hover:text-red-500 font-bold text-xl">&times;</button>
+      <h3 class="text-xl font-bold mb-4" id="forumModalTitle">ตั้งกระทู้ใหม่</h3>
+      <input type="hidden" id="forumEditId" value="">
+      <div class="mb-4">
+        <label class="font-bold text-sm block mb-1">หัวข้อกระทู้</label>
+        <input type="text" id="forumTopicTitle" class="w-full p-2 border rounded" placeholder="พิมพ์หัวข้อกระทู้...">
+      </div>
+      <div class="mb-4">
+        <label class="font-bold text-sm block mb-1">รายละเอียด / คำถาม</label>
+        <textarea id="forumTopicBody" rows="5" class="w-full p-2 border rounded" placeholder="พิมพ์รายละเอียดที่นี่..."></textarea>
+      </div>
+      <div class="flex gap-2 justify-end">
+        <button onclick="closeForumModal()" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400 font-bold">ยกเลิก</button>
+        <button id="btnSaveForumTopic" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold">โพสต์กระทู้</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= หน้า Login ================= -->
+  <div id="loginPage" class="min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md text-center">
+      <img src="https://github.com/suchartstudio/khonkaen/blob/main/logo.png?raw=true" alt="Logo" class="h-24 mx-auto mb-4">
+      <h2 class="text-2xl font-bold mb-6">เข้าสู่ระบบ</h2>
+      <input type="text" id="loginId" placeholder="เลข ID 10 หลัก" maxlength="10" 
+             class="w-full px-4 py-3 border rounded-lg text-xl text-center mb-4 focus:ring-2 focus:ring-blue-500">
+      <button id="btnLogin" class="w-full bg-blue-600 text-white py-3 rounded-lg text-lg font-bold hover:bg-blue-700">เข้าสู่ระบบ</button>
+      <p id="loginError" class="text-red-500 mt-3 hidden">ไม่พบเลข ID นี้</p>
+    </div>
+  </div>
+
+  <!-- ================= Main App ================= -->
+  <div id="mainApp" class="hidden h-screen flex flex-col md:flex-row overflow-hidden">
+    
+    <!-- Sidebar -->
+    <nav class="bg-blue-800 text-white w-full md:w-64 flex-shrink-0 flex flex-col shadow-xl z-10 overflow-y-auto">
+      <div class="p-4 text-center border-b border-blue-700">
+        <h1 class="text-lg font-bold" id="userDepartment">ชื่อหน่วยงาน</h1>
+        <p class="text-sm text-blue-200 mt-1" id="userNameDisplay"></p>
+      </div>
+      <div class="flex-1 flex flex-row md:flex-col overflow-x-auto md:overflow-visible p-2 gap-2" id="navTabs">
+        <button onclick="switchTab('tabHome')" class="px-4 py-3 text-left hover:bg-blue-700 rounded w-full whitespace-nowrap">🏠 หน้าหลัก</button>
+        <button id="navAdmin" onclick="switchTab('tabAdmin')" class="px-4 py-3 text-left bg-yellow-600 hover:bg-yellow-700 rounded w-full whitespace-nowrap hidden font-bold">⚙️ จัดการระบบ</button>
+        <button onclick="switchTab('tabCalendar')" class="px-4 py-3 text-left hover:bg-blue-700 rounded w-full whitespace-nowrap">📅 ปฏิทินแจ้งข่าว</button>
+        <button onclick="switchTab('tabArchive')" class="px-4 py-3 text-left hover:bg-blue-700 rounded w-full whitespace-nowrap">📂 คลังไฟล์เอกสาร</button>
+        <button onclick="switchTab('tabSignature')" class="px-4 py-3 text-left hover:bg-blue-700 rounded w-full whitespace-nowrap">📝 เอกสารรอลงนาม</button>
+        <button onclick="switchTab('tabForum')" class="px-4 py-3 text-left hover:bg-blue-700 rounded w-full whitespace-nowrap">🗣️ กระทู้ถาม-ตอบ</button>
+        <button onclick="switchTab('tabChat')" class="px-4 py-3 text-left hover:bg-blue-700 rounded w-full whitespace-nowrap relative flex items-center justify-between">
+          <span>💬 ข้อความ (แชท)</span>
+          <span id="chatTabBadge" class="hidden flex items-center justify-center bg-red-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full animate-pulse">
+            <span id="chatTabBadgeCount">0</span>
+          </span>
+        </button>
+        <button onclick="logout()" class="px-4 py-3 text-left hover:bg-red-600 rounded w-full whitespace-nowrap md:mt-auto text-red-200">🚪 ออกจากระบบ</button>
+      </div>
+    </nav>
+
+    <!-- Content Area -->
+    <main class="flex-1 overflow-y-auto bg-gray-50 h-full w-full relative">
+      
+      <!-- ================= Tab: หน้าหลัก (Dashboard) ================= -->
+      <div id="tabHome" class="tab-content p-4 md:p-8">
+        <h2 class="text-2xl font-bold mb-4">🏠 หน้าหลัก (Dashboard)</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="bg-white p-5 rounded-lg shadow border-t-4 border-yellow-500">
+            <h3 class="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2"><span>📅</span> กิจกรรมที่กำลังจะเกิดขึ้น</h3>
+            <div id="dashEventsList" class="space-y-3 max-h-80 overflow-y-auto pr-2"></div>
+          </div>
+          <div class="bg-white p-5 rounded-lg shadow border-t-4 border-blue-500">
+            <h3 class="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2"><span>✍️</span> เอกสารรอท่านลงนาม</h3>
+            <div id="dashDocsList" class="space-y-3 max-h-80 overflow-y-auto pr-2"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= Tab: Admin ================= -->
+      <div id="tabAdmin" class="tab-content hidden p-4 md:p-8">
+        <h2 class="text-2xl font-bold mb-4 text-yellow-700">⚙️ จัดการระบบ (Admin)</h2>
+        
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+          <!-- ฟอร์มปฏิทิน -->
+          <div class="bg-white p-6 rounded shadow border-t-4 border-yellow-500">
+            <h3 class="text-xl font-bold mb-4" id="adminEventTitle">📅 เพิ่ม/แก้ไข กำหนดการ</h3>
+            <input type="hidden" id="editEventId" value="">
+            <div class="mb-4"><label class="font-bold text-sm">หัวข้อกิจกรรม</label><input type="text" id="eventTitle" class="w-full p-2 border rounded"></div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div><label class="font-bold text-sm">วันที่</label><input type="date" id="eventDate" class="w-full p-2 border rounded"></div>
+              <div><label class="font-bold text-sm">เวลา</label><input type="time" id="eventTime" class="w-full p-2 border rounded"></div>
+            </div>
+            <div class="mb-4"><label class="font-bold text-sm">สถานที่จัดงาน</label><input type="text" id="eventLocation" class="w-full p-2 border rounded" placeholder="เช่น ห้องประชุม 1"></div>
+            <div class="mb-4"><label class="font-bold text-sm">รายละเอียด</label><textarea id="eventDesc" rows="2" class="w-full p-2 border rounded"></textarea></div>
+            <div class="mb-4">
+              <div class="flex justify-between items-center mb-2">
+                <label class="font-bold text-sm">🏷️ Tag ผู้ที่เกี่ยวข้อง</label>
+                <div class="flex gap-2">
+                  <button type="button" onclick="selectAllTags('dept-tag')" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded font-bold shadow-sm transition">✅ เลือกทั้งหมด</button>
+                  <button type="button" onclick="clearAllTags('dept-tag')" class="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded font-bold shadow-sm transition">❌ ล้าง</button>
+                </div>
+              </div>
+              <div id="tagCheckboxes" class="grid grid-cols-1 md:grid-cols-2 gap-2 bg-gray-50 p-4 border rounded text-sm"></div>
+            </div>
+            <div class="flex gap-2">
+              <button id="btnSaveEvent" class="bg-yellow-600 text-white font-bold py-2 px-6 rounded">บันทึกกิจกรรม</button>
+              <button id="btnCancelEdit" class="bg-gray-400 text-white font-bold py-2 px-6 rounded hidden" onclick="cancelEdit()">ยกเลิก</button>
+            </div>
+          </div>
+          <!-- รายการปฏิทิน Admin -->
+          <div class="bg-white p-6 rounded shadow border-t-4 border-gray-500 flex flex-col">
+            <h3 class="text-xl font-bold mb-4">📋 รายการปฏิทินทั้งหมดในระบบ</h3>
+            <div id="adminEventList" class="flex-1 overflow-y-auto space-y-2 max-h-96"></div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+          <!-- ฟอร์มสร้างเอกสารรอลงนาม -->
+          <div class="bg-white p-6 rounded shadow border-t-4 border-blue-500">
+            <h3 class="text-xl font-bold mb-4">📝 สร้างเอกสารเพื่อรอลงนาม (PDF)</h3>
+            <div class="mb-4"><label class="font-bold text-sm">ชื่อเอกสาร / เรื่อง</label><input type="text" id="docTitle" class="w-full p-2 border rounded"></div>
+            <div class="mb-4"><label class="font-bold text-sm">ไฟล์เอกสาร (PDF)</label><input type="file" id="docFileInput" accept=".pdf" class="w-full p-2 border rounded"></div>
+            <div class="mb-4">
+              <div class="flex justify-between items-center mb-2">
+                <label class="font-bold text-sm">🏷️ Tag ผู้ที่ต้องลงนาม</label>
+                <div class="flex gap-2">
+                  <button type="button" onclick="selectAllTags('doc-dept-tag')" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded font-bold shadow-sm transition">✅ เลือกทั้งหมด</button>
+                  <button type="button" onclick="clearAllTags('doc-dept-tag')" class="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded font-bold shadow-sm transition">❌ ล้าง</button>
+                </div>
+              </div>
+              <div id="docTagCheckboxes" class="grid grid-cols-1 md:grid-cols-2 gap-2 bg-gray-50 p-4 border rounded text-sm"></div>
+            </div>
+            <button id="btnUploadDoc" class="bg-blue-600 text-white font-bold py-2 px-6 rounded w-full">อัพโหลดและส่งเอกสาร</button>
+            <p id="docUploadStatus" class="mt-2 text-sm text-center font-bold"></p>
+          </div>
+          <!-- รายการเอกสารรอลงนาม Admin -->
+          <div class="bg-white p-6 rounded shadow border-t-4 border-gray-500 flex flex-col">
+            <h3 class="text-xl font-bold mb-4">📂 รายการเอกสารลงนามทั้งหมด</h3>
+            <div id="adminDocList" class="flex-1 overflow-y-auto space-y-2 max-h-96"></div>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded shadow border-t-4 border-purple-500 mb-6">
+          <h3 class="text-xl font-bold mb-4">👤 จัดการฐานข้อมูลบุคลากร</h3>
+          <div id="adminUserList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+          <button id="btnSaveAllUsers" class="mt-4 bg-purple-600 text-white font-bold py-2 px-6 rounded">บันทึกข้อมูลบุคลากรทั้งหมด</button>
+        </div>
+      </div>
+
+      <!-- ================= Tab: ปฏิทิน ================= -->
+      <div id="tabCalendar" class="tab-content hidden p-4 md:p-8">
+        <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-2">
+          <h2 class="text-2xl font-bold">📅 ปฏิทินแจ้งข่าว</h2>
+          <div class="flex gap-2">
+            <button onclick="changeMonth(-1)" class="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">◀ เดือนก่อน</button>
+            <span id="currentMonthYear" class="font-bold text-lg px-2 w-40 text-center"></span>
+            <button onclick="changeMonth(1)" class="bg-gray-200 px-3 py-1 rounded hover:bg-gray-300">เดือนหน้า ▶</button>
+          </div>
+        </div>
+        <div class="calendar-grid rounded shadow overflow-hidden">
+          <div class="calendar-header">อา.</div><div class="calendar-header">จ.</div><div class="calendar-header">อ.</div>
+          <div class="calendar-header">พ.</div><div class="calendar-header">พฤ.</div><div class="calendar-header">ศ.</div><div class="calendar-header">ส.</div>
+        </div>
+        <div id="calendarDays" class="calendar-grid"></div>
+      </div>
+
+      <!-- ================= Tab: คลังไฟล์เอกสาร (Archive) ================= -->
+      <div id="tabArchive" class="tab-content hidden p-4 md:p-8">
+        <h2 class="text-2xl font-bold mb-4">📂 คลังไฟล์เอกสาร</h2>
+        
+        <!-- ส่วนอัพโหลดไฟล์ (ทุกคนเข้าถึงได้) -->
+        <div class="bg-white p-6 rounded shadow border-t-4 border-green-500 mb-6">
+          <h3 class="text-xl font-bold mb-4">อัพโหลดและแชร์เอกสารเข้าคลัง (PDF)</h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div><label class="font-bold text-sm">ชื่อเอกสาร / เรื่อง</label><input type="text" id="archiveTitle" class="w-full p-2 border rounded"></div>
+            <div><label class="font-bold text-sm">ไฟล์เอกสาร (PDF)</label><input type="file" id="archiveFileInput" accept=".pdf" class="w-full p-2 border rounded"></div>
+          </div>
+          <div class="mb-4">
+            <div class="flex justify-between items-center mb-2">
+              <label class="font-bold text-sm">🏷️ Tag แจ้งให้หน่วยงานที่เกี่ยวข้องทราบ</label>
+              <div class="flex gap-2">
+                <button type="button" onclick="selectAllTags('archive-dept-tag')" class="text-xs bg-green-100 hover:bg-green-200 text-green-800 px-3 py-1 rounded font-bold shadow-sm transition">✅ เลือกทั้งหมด</button>
+                <button type="button" onclick="clearAllTags('archive-dept-tag')" class="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded font-bold shadow-sm transition">❌ ล้าง</button>
+              </div>
+            </div>
+            <div id="archiveTagCheckboxes" class="grid grid-cols-1 md:grid-cols-2 gap-2 bg-gray-50 p-4 border rounded text-sm"></div>
+          </div>
+          <button id="btnUploadArchive" class="bg-green-600 text-white font-bold py-2 px-6 rounded w-full hover:bg-green-700">อัพโหลดเอกสารเข้าคลัง</button>
+          <p id="archiveUploadStatus" class="mt-2 text-sm text-center font-bold"></p>
+        </div>
+
+        <!-- รายการคลังเอกสาร -->
+        <div class="bg-white p-6 rounded shadow border-t-4 border-gray-400">
+          <h3 class="text-xl font-bold mb-4">📋 รายการเอกสารในคลัง</h3>
+          <div id="archiveList" class="space-y-3">
+            <p class="text-gray-500 text-center">กำลังโหลดข้อมูล...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= Tab: เอกสารรอลงนาม ================= -->
+      <div id="tabSignature" class="tab-content hidden p-4 md:p-8">
+        <h2 class="text-2xl font-bold mb-4">📝 เอกสาร & ลงนามดิจิทัล</h2>
+        <div id="documentList" class="space-y-4">
+          <p class="text-gray-500">กำลังโหลดข้อมูล...</p>
+        </div>
+      </div>
+
+      <!-- ================= Tab: กระทู้ถาม-ตอบ (Forum) ================= -->
+      <div id="tabForum" class="tab-content hidden p-4 md:p-8 flex-col h-full overflow-hidden">
+        
+        <!-- หน้ารวมกระทู้ -->
+        <div id="forumListView" class="flex flex-col h-full">
+          <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-4 flex-shrink-0">
+            <h2 class="text-2xl font-bold">🗣️ ระบบกระทู้ถาม-ตอบ</h2>
+            <button onclick="openForumModal()" class="bg-blue-600 text-white px-6 py-2 rounded-full shadow hover:bg-blue-700 font-bold transition whitespace-nowrap">+ ตั้งกระทู้ใหม่</button>
+          </div>
+          <div id="forumTopicList" class="flex-1 overflow-y-auto space-y-3 pb-8">
+            <p class="text-center text-gray-500 mt-10">กำลังโหลดกระทู้...</p>
+          </div>
+        </div>
+
+        <!-- หน้าอ่านกระทู้ (Detail) -->
+        <div id="forumDetailView" class="hidden flex-col h-full">
+          <div class="mb-4 flex-shrink-0">
+            <button onclick="closeForumDetail()" class="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 transition">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd" /></svg> กลับไปหน้ารวมกระทู้
+            </button>
+          </div>
+          
+          <div class="flex-1 overflow-y-auto pb-8">
+            <!-- หัวข้อกระทู้ -->
+            <div id="forumDetailHeader" class="bg-white p-6 rounded-lg shadow border border-gray-200 mb-6">
+               <!-- Render Header Here -->
+            </div>
+
+            <!-- ความคิดเห็น -->
+            <h3 class="text-lg font-bold mb-3 text-gray-700 border-b pb-2">💬 ความคิดเห็น</h3>
+            <div id="forumDetailComments" class="space-y-4 mb-6">
+               <!-- Render Comments Here -->
+            </div>
+
+            <!-- ฟอร์มแสดงความคิดเห็น -->
+            <div class="bg-gray-50 p-4 rounded-lg border border-gray-300">
+              <h4 class="font-bold text-gray-800 mb-2">แสดงความคิดเห็น</h4>
+              <textarea id="forumCommentInput" rows="3" class="w-full p-3 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 mb-2" placeholder="พิมพ์ความคิดเห็นของคุณที่นี่..."></textarea>
+              <button id="btnSubmitForumComment" class="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700 transition">ส่งความคิดเห็น</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ================= Tab: ข้อความ (Chat) ================= -->
+      <div id="tabChat" class="tab-content hidden h-full flex flex-col md:flex-row">
+        <!-- รายชื่อผู้ติดต่อ -->
+        <div class="w-full md:w-1/3 bg-white border-r h-[30vh] md:h-full flex flex-col flex-shrink-0">
+          <div class="p-4 bg-blue-50 border-b font-bold text-blue-900">👥 เลือกห้องสนทนา</div>
+          <div id="chatContactList" class="flex-1 overflow-y-auto p-2 space-y-1"></div>
+        </div>
+        <!-- หน้าต่างแชท -->
+        <div class="w-full md:w-2/3 bg-gray-100 flex flex-col h-[70vh] md:h-full relative">
+          <div id="chatHeader" class="p-4 bg-white border-b font-bold text-gray-800 shadow-sm z-10 flex items-center justify-between">
+            <span>โปรดเลือกรายชื่อทางซ้ายมือเพื่อเริ่มสนทนา</span>
+          </div>
+          <div id="chatMessages" class="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+             <div class="text-center text-gray-400 mt-10">เลือกผู้ติดต่อเพื่อดูข้อความ</div>
+          </div>
+          <div class="p-3 bg-white border-t flex items-center gap-2">
+            <input type="file" id="chatImgInput" accept="image/*" class="hidden">
+            <button onclick="document.getElementById('chatImgInput').click()" class="bg-gray-100 p-3 rounded-full hover:bg-gray-200 text-gray-600 transition" title="แนบรูปภาพ">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            </button>
+            <input type="text" id="chatInput" disabled class="flex-1 border rounded-full px-4 py-2 focus:outline-none focus:border-blue-500 disabled:bg-gray-100" placeholder="พิมพ์ข้อความที่นี่...">
+            <button id="btnSendChat" disabled class="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 disabled:bg-blue-300 transition">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>
+            </button>
+          </div>
+          <div id="chatUploadStatus" class="absolute bottom-16 left-0 right-0 text-center text-xs font-bold bg-blue-100 text-blue-700 py-1 hidden">กำลังอัพโหลดรูปภาพ...</div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+    import { getDatabase, ref, push, update, onValue, serverTimestamp, set, remove, off } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDMptdLpLEdbeVFKZj82M0gyoV2m_2y5Pk",
+      authDomain: "suchartstudio-9a78d.firebaseapp.com",
+      databaseURL: "https://suchartstudio-9a78d-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "suchartstudio-9a78d",
+      storageBucket: "suchartstudio-9a78d.firebasestorage.app"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const userRoles = {
+      "0000000000": { group: "Admin", role: "ผู้ดูแลระบบ (Admin)" },
+      "2000000001": { group: "ผู้บริหาร", role: "นายกเทศมนตรี" },
+      "2000000002": { group: "ผู้บริหาร", role: "รองนายกคนที่ 1" },
+      "2000000003": { group: "ผู้บริหาร", role: "รองนายกคนที่ 2" },
+      "2000000004": { group: "ผู้บริหาร", role: "รองนายกคนที่ 3" },
+      "2000000005": { group: "ผู้บริหาร", role: "รองนายกคนที่ 4" },
+      "1000000001": { group: "สำนัก/กอง", role: "ผู้อำนวยการสำนักปลัดเทศบาล" },
+      "1000000002": { group: "สำนัก/กอง", role: "ผู้อำนวยการสำนักงานเลขานุการเทศบาล" },
+      "1000000003": { group: "สำนัก/กอง", role: "ผู้อำนวยการสำนักคลัง" },
+      "1000000004": { group: "สำนัก/กอง", role: "ผู้อำนวยการสำนักช่าง" },
+      "1000000005": { group: "สำนัก/กอง", role: "ผู้อำนวยการสำนักสาธารณสุขและสิ่งแวดล้อม" },
+      "1000000006": { group: "สำนัก/กอง", role: "ผู้อำนวยการสำนักการศึกษา" },
+      "1000000007": { group: "สำนัก/กอง", role: "ผู้อำนวยการสำนักสวัสดิการสังคม" },
+      "1000000008": { group: "สำนัก/กอง", role: "ผู้อำนวยการกองยุทธศาสตร์และงบประมาณ" },
+      "1000000009": { group: "สำนัก/กอง", role: "ผู้อำนวยการกองการเจ้าหน้าที่" },
+      "1000000010": { group: "สำนัก/กอง", role: "ผู้อำนวยการกองพัสดุและทรัพย์สิน" },
+      "1000000011": { group: "สำนัก/กอง", role: "ผู้อำนวยการกองป้องกันและบรรเทาสาธารณภัย" },
+      "1000000012": { group: "สำนัก/กอง", role: "ผู้อำนวยการหน่วยตรวจสอบภายใน" }
+    };
+
+    let currentUser = null;
+    let allEvents = {}; 
+    let allDocs = {};
+    let allArchive = {};
+    let allForumTopics = {};
+    let userProfiles = {}; 
+    let latestUnreadData = {};
+    let currentRenderMonth = new Date().getMonth();
+    let currentRenderYear = new Date().getFullYear();
+
+    window.selectAllTags = (className) => document.querySelectorAll('.' + className).forEach(cb => cb.checked = true);
+    window.clearAllTags = (className) => document.querySelectorAll('.' + className).forEach(cb => cb.checked = false);
+
+    onValue(ref(db, 'users'), (snapshot) => {
+      userProfiles = snapshot.val() || {};
+      renderAdminUserForm();
+      if(currentUser) { 
+        updateDisplayName(); 
+        renderChatContactList();
+      }
+    });
+
+    // สร้าง Checkbox ให้แต่ละส่วน
+    const tagDiv = document.getElementById('tagCheckboxes');
+    const docTagDiv = document.getElementById('docTagCheckboxes');
+    const archiveTagDiv = document.getElementById('archiveTagCheckboxes');
+
+    let hExec = `<div class="col-span-full font-bold text-yellow-800 border-b pb-1 mb-1 mt-2">ผู้บริหาร</div>`;
+    let hDept = `<div class="col-span-full font-bold text-yellow-800 border-b pb-1 mb-1 mt-2">สำนัก/กอง</div>`;
+    
+    let dExec = `<div class="col-span-full font-bold text-blue-800 border-b pb-1 mb-1 mt-2">ผู้บริหาร</div>`;
+    let dDept = `<div class="col-span-full font-bold text-blue-800 border-b pb-1 mb-1 mt-2">สำนัก/กอง</div>`;
+
+    let aExec = `<div class="col-span-full font-bold text-green-800 border-b pb-1 mb-1 mt-2">ผู้บริหาร</div>`;
+    let aDept = `<div class="col-span-full font-bold text-green-800 border-b pb-1 mb-1 mt-2">สำนัก/กอง</div>`;
+
+    for (const [id, data] of Object.entries(userRoles)) {
+      if(id === "0000000000") continue;
+      let lbl = `<span>${data.role}</span></label>`;
+      let cbEv = `<label class="flex items-center space-x-2 cursor-pointer p-1 hover:bg-gray-100 rounded"><input type="checkbox" value="${id}" class="dept-tag form-checkbox text-yellow-600">` + lbl;
+      let cbDoc = `<label class="flex items-center space-x-2 cursor-pointer p-1 hover:bg-gray-100 rounded"><input type="checkbox" value="${id}" class="doc-dept-tag form-checkbox text-blue-600">` + lbl;
+      let cbArc = `<label class="flex items-center space-x-2 cursor-pointer p-1 hover:bg-gray-100 rounded"><input type="checkbox" value="${id}" class="archive-dept-tag form-checkbox text-green-600">` + lbl;
+      
+      if(data.group === "ผู้บริหาร") { hExec += cbEv; dExec += cbDoc; aExec += cbArc; } 
+      else { hDept += cbEv; dDept += cbDoc; aDept += cbArc; }
+    }
+    tagDiv.innerHTML = hExec + hDept;
+    docTagDiv.innerHTML = dExec + dDept;
+    if(archiveTagDiv) archiveTagDiv.innerHTML = aExec + aDept;
+
+    function getFullName(id) {
+      if(id === "0000000000") return "ผู้ดูแลระบบ";
+      const roleName = userRoles[id]?.role || "ไม่ระบุตำแหน่ง";
+      const personName = userProfiles[id]?.name ? ` (${userProfiles[id].name})` : "";
+      return roleName + personName;
+    }
+
+    function formatDateTime(timestamp) {
+      if(!timestamp) return '';
+      return new Date(timestamp).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) + ' น.';
+    }
+
+    function updateDisplayName() {
+      document.getElementById('userDepartment').innerText = userRoles[currentUser.id].role;
+      document.getElementById('userNameDisplay').innerText = userProfiles[currentUser.id]?.name || "ยังไม่ได้ระบุชื่อ";
+    }
+
+    function getDirectImageUrl(url) {
+      if (!url) return '';
+      if (url.includes('lh3.googleusercontent.com') || url.startsWith('data:image')) return url;
+      const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) return 'https://lh3.googleusercontent.com/d/' + match[1];
+      return url;
+    }
+
+    // --- ระบบ Login ---
+    document.getElementById('btnLogin').addEventListener('click', () => {
+      const id = document.getElementById('loginId').value;
+      if(userRoles[id]) {
+        currentUser = { id: id, ...userRoles[id] };
+        updateDisplayName();
+        
+        document.getElementById('navAdmin').classList.toggle('hidden', id !== "0000000000");
+        document.getElementById('loginPage').classList.add('hidden');
+        document.getElementById('mainApp').classList.remove('hidden');
+        
+        loadCalendarEvents();
+        loadDocuments();
+        loadArchiveDocs();
+        loadForumTopics();
+        renderChatContactList();
+        setupNotifications();
+      } else {
+        document.getElementById('loginError').classList.remove('hidden');
+      }
+    });
+
+    window.switchTab = (tabId) => {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById(tabId).classList.remove('hidden');
+      
+      if(tabId === 'tabChat' && currentChatUserId) clearUnread(currentChatUserId);
+      if(tabId === 'tabForum') closeForumDetail(); // Reset view to list
+    };
+    window.logout = () => location.reload();
+
+    // ================= Dashboard =================
+    function renderDashboard() {
+      if(!currentUser) return;
+      const dashEventDiv = document.getElementById('dashEventsList');
+      dashEventDiv.innerHTML = '';
+      const today = new Date();
+      const offset = today.getTimezoneOffset() * 60000;
+      const localISOTime = (new Date(today - offset)).toISOString().split('T')[0];
+
+      let upcomingEvents = Object.keys(allEvents).map(k => ({id: k, ...allEvents[k]}))
+        .filter(ev => ev.date >= localISOTime && (currentUser.id === "0000000000" || (ev.tags && ev.tags.includes(currentUser.id))))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      if(upcomingEvents.length === 0) dashEventDiv.innerHTML = '<p class="text-sm text-gray-500">ไม่มีกิจกรรมที่กำลังจะเกิดขึ้น</p>';
+      else {
+        upcomingEvents.forEach(ev => {
+          const [y, m, d] = ev.date.split('-');
+          const dateStr = `${d}/${m}/${Number(y)+543}`;
+          const timeStr = ev.time ? ` ⏰ ${ev.time} น.` : '';
+          dashEventDiv.innerHTML += `
+            <div class="border-l-4 border-yellow-400 bg-yellow-50 p-3 rounded text-sm hover:bg-yellow-100 cursor-pointer transition" onclick="showEventPopup('${ev.id}')">
+              <div class="font-bold text-gray-800">${ev.title}</div>
+              <div class="text-yellow-700 mt-1">📅 ${dateStr}${timeStr}</div>
+              ${ev.location ? `<div class="text-green-700">📍 ${ev.location}</div>` : ''}
+            </div>`;
+        });
+      }
+
+      const dashDocDiv = document.getElementById('dashDocsList');
+      dashDocDiv.innerHTML = '';
+      let pendingDocs = Object.keys(allDocs).map(k => ({id: k, ...allDocs[k]}))
+        .filter(d => currentUser.id !== "0000000000" && d.tags && d.tags.includes(currentUser.id) && (!d.signatures || !d.signatures[currentUser.id]));
+      
+      if(currentUser.id === "0000000000") dashDocDiv.innerHTML = '<p class="text-sm text-gray-500">แอดมินไม่ต้องลงนามในเอกสาร</p>';
+      else if(pendingDocs.length === 0) dashDocDiv.innerHTML = '<p class="text-sm text-gray-500">ไม่มีเอกสารค้างลงนาม</p>';
+      else {
+        pendingDocs.forEach(d => {
+          dashDocDiv.innerHTML += `
+            <div class="border-l-4 border-red-500 bg-red-50 p-3 rounded text-sm flex justify-between items-center">
+              <div class="truncate pr-2 font-bold text-gray-800">📄 ${d.title}</div>
+              <button onclick="switchTab('tabSignature'); openSignModal('${d.id}', '${d.title.replace(/'/g,"")}')" class="bg-red-500 text-white px-3 py-1 rounded shadow text-xs whitespace-nowrap hover:bg-red-600 animate-pulse">ลงนาม</button>
+            </div>`;
+        });
+      }
+    }
+
+    // ================= Admin Users =================
+    function renderAdminUserForm() {
+      const container = document.getElementById('adminUserList');
+      container.innerHTML = '';
+      for (const [id, data] of Object.entries(userRoles)) {
+        const currentName = userProfiles[id]?.name || "";
+        const bg = id === "0000000000" ? "bg-purple-100 border-purple-300" : "bg-gray-50 border-gray-200";
+        container.innerHTML += `
+          <div class="${bg} p-3 rounded border text-sm">
+            <div class="font-bold text-purple-800 mb-1">${data.role}</div>
+            <div class="text-xs text-gray-500 mb-1">ID: ${id}</div>
+            <input type="text" id="userName_${id}" placeholder="ระบุ ชื่อ-นามสกุล" value="${currentName}" class="w-full p-1 border rounded">
+          </div>`;
+      }
+    }
+    document.getElementById('btnSaveAllUsers').addEventListener('click', () => {
+      let updates = {};
+      for (const id of Object.keys(userRoles)) {
+        const input = document.getElementById(`userName_${id}`);
+        if(input) updates[id] = { name: input.value.trim() };
+      }
+      update(ref(db, 'users'), updates).then(() => alert('บันทึกข้อมูลบุคลากรเรียบร้อย'));
+    });
+
+    // ================= ปฏิทิน =================
+    function loadCalendarEvents() {
+      onValue(ref(db, 'calendar_events'), (snapshot) => {
+        allEvents = snapshot.val() || {};
+        renderCalendar(); renderAdminEventList(); renderDashboard();
       });
     }
+
+    document.getElementById('btnSaveEvent').addEventListener('click', () => {
+      const title = document.getElementById('eventTitle').value;
+      const date = document.getElementById('eventDate').value;
+      const time = document.getElementById('eventTime').value;
+      const location = document.getElementById('eventLocation').value;
+      const desc = document.getElementById('eventDesc').value;
+      const eventId = document.getElementById('editEventId').value;
+      const checkedTags = Array.from(document.querySelectorAll('.dept-tag:checked')).map(cb => cb.value);
+
+      if(!title || !date || checkedTags.length === 0) return alert('กรอกข้อมูลไม่ครบถ้วน');
+
+      const dataObj = { title, date, time, location, description: desc, tags: checkedTags };
+      if(eventId) {
+        update(ref(db, 'calendar_events/' + eventId), dataObj).then(() => { alert('อัพเดทสำเร็จ'); cancelEdit(); });
+      } else {
+        dataObj.createdAt = serverTimestamp();
+        push(ref(db, 'calendar_events'), dataObj).then(() => { alert('บันทึกสำเร็จ'); cancelEdit(); });
+      }
+    });
+
+    window.editEvent = (id, eventObj) => {
+      if(eventObj) eventObj.stopPropagation();
+      const ev = allEvents[id];
+      if(!ev) return;
+      document.getElementById('adminEventTitle').innerText = '✏️ แก้ไข กำหนดการ';
+      document.getElementById('editEventId').value = id;
+      document.getElementById('eventTitle').value = ev.title;
+      document.getElementById('eventDate').value = ev.date;
+      document.getElementById('eventTime').value = ev.time || '';
+      document.getElementById('eventLocation').value = ev.location || '';
+      document.getElementById('eventDesc').value = ev.description;
+      document.getElementById('btnSaveEvent').innerText = 'อัพเดทข้อมูล';
+      document.getElementById('btnCancelEdit').classList.remove('hidden');
+      document.querySelectorAll('.dept-tag').forEach(cb => { cb.checked = ev.tags && ev.tags.includes(cb.value); });
+      switchTab('tabAdmin');
+    };
+    window.deleteEvent = (id) => { if(confirm('ยืนยันลบกิจกรรมนี้?')) remove(ref(db, 'calendar_events/' + id)); };
+    window.cancelEdit = () => {
+      document.getElementById('adminEventTitle').innerText = '📅 เพิ่ม/แก้ไข กำหนดการ';
+      document.getElementById('editEventId').value = '';
+      document.getElementById('eventTitle').value = '';
+      document.getElementById('eventDate').value = '';
+      document.getElementById('eventTime').value = '';
+      document.getElementById('eventLocation').value = '';
+      document.getElementById('eventDesc').value = '';
+      document.getElementById('btnSaveEvent').innerText = 'บันทึกกิจกรรม';
+      document.getElementById('btnCancelEdit').classList.add('hidden');
+      document.querySelectorAll('.dept-tag').forEach(cb => cb.checked = false);
+    };
+
+    function renderAdminEventList() {
+      const listDiv = document.getElementById('adminEventList');
+      listDiv.innerHTML = '';
+      let sortedEvents = Object.keys(allEvents).map(key => ({ id: key, ...allEvents[key] })).sort((a,b) => new Date(b.date) - new Date(a.date));
+      sortedEvents.forEach(ev => {
+        listDiv.innerHTML += `
+          <div class="bg-gray-50 p-3 rounded border flex justify-between items-center text-sm">
+            <div><span class="font-bold text-blue-600">${ev.date}</span> : ${ev.title}</div>
+            <div class="flex gap-2">
+              <button onclick="editEvent('${ev.id}')" class="text-yellow-600 font-bold">แก้ไข</button>
+              <button onclick="deleteEvent('${ev.id}')" class="text-red-600 font-bold">ลบ</button>
+            </div>
+          </div>`;
+      });
+    }
+
+    window.changeMonth = (step) => {
+      currentRenderMonth += step;
+      if(currentRenderMonth < 0) { currentRenderMonth = 11; currentRenderYear--; }
+      if(currentRenderMonth > 11) { currentRenderMonth = 0; currentRenderYear++; }
+      renderCalendar();
+    };
+
+    function renderCalendar() {
+      const monthNames = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+      document.getElementById('currentMonthYear').innerText = `${monthNames[currentRenderMonth]} ${currentRenderYear + 543}`;
+      const grid = document.getElementById('calendarDays');
+      grid.innerHTML = '';
+      const firstDay = new Date(currentRenderYear, currentRenderMonth, 1).getDay();
+      const daysInMonth = new Date(currentRenderYear, currentRenderMonth + 1, 0).getDate();
+      const today = new Date(); today.setHours(0,0,0,0);
+
+      for(let i = 0; i < firstDay; i++) grid.innerHTML += `<div class="calendar-day bg-gray-50"></div>`;
+
+      for(let d = 1; d <= daysInMonth; d++) {
+        const currentDateStr = `${currentRenderYear}-${String(currentRenderMonth + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const cellDate = new Date(currentRenderYear, currentRenderMonth, d);
+        let eventsHtml = '';
+        for(let id in allEvents) {
+          const ev = allEvents[id];
+          if (ev.date === currentDateStr && (currentUser.id === "0000000000" || (ev.tags && ev.tags.includes(currentUser.id)))) {
+            const isPast = cellDate < today;
+            const bgClass = isPast ? 'past-event' : 'bg-blue-100 text-blue-800 border-l-2 border-blue-500';
+            let adminBtn = currentUser.id === "0000000000" ? `<span onclick="editEvent('${id}', event)" class="float-right text-yellow-600 hover:text-yellow-800 ml-1">✏️</span>` : '';
+            eventsHtml += `<div class="event-badge ${bgClass} shadow-sm relative group" onclick="showEventPopup('${id}')">
+              ${adminBtn}<strong>${ev.title}</strong>${ev.time ? `<div class="text-[10px] text-gray-500 mt-1">⏰ ${ev.time}</div>` : ''}
+            </div>`;
+          }
+        }
+        const isToday = (cellDate.getTime() === today.getTime());
+        const dayBadge = isToday ? `<span class="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold mb-1">${d}</span>` : `<span class="text-gray-600 font-bold mb-1">${d}</span>`;
+        grid.innerHTML += `<div class="calendar-day hover:bg-gray-50 transition">${dayBadge}${eventsHtml}</div>`;
+      }
+    }
+
+    window.showEventPopup = (id) => {
+      const ev = allEvents[id];
+      if(!ev) return;
+      const [y, m, d] = ev.date.split('-');
+      document.getElementById('modalEvTitle').innerText = ev.title;
+      document.getElementById('modalEvDate').innerText = `${d}/${m}/${Number(y)+543}`;
+      document.getElementById('modalEvTime').innerText = ev.time ? `${ev.time} น.` : 'ไม่ได้ระบุ';
+      document.getElementById('modalEvLocation').innerText = ev.location || 'ไม่ได้ระบุ';
+      document.getElementById('modalEvDesc').innerText = ev.description || '-';
+      document.getElementById('eventModal').classList.remove('hidden');
+    };
+    window.closeEventModal = () => document.getElementById('eventModal').classList.add('hidden');
+
+    // ================= ระบบเอกสารรอลงนาม =================
+    function loadDocuments() {
+      onValue(ref(db, 'documents'), (snapshot) => {
+        allDocs = snapshot.val() || {};
+        renderDashboard(); 
+        const listDiv = document.getElementById('documentList');
+        const adminListDiv = document.getElementById('adminDocList');
+        listDiv.innerHTML = ''; if(adminListDiv) adminListDiv.innerHTML = '';
+        
+        let sortedDocs = Object.keys(allDocs).map(k => ({id: k, ...allDocs[k]})).reverse();
+        let hasDoc = false;
+
+        sortedDocs.forEach((data) => {
+          if(adminListDiv && currentUser.id === "0000000000") {
+             adminListDiv.innerHTML += `
+               <div class="bg-gray-50 p-3 rounded border flex justify-between items-center text-sm">
+                 <div class="truncate pr-2">📄 <a href="${data.fileUrl}" target="_blank" class="text-blue-600 hover:underline">${data.title}</a></div>
+                 <button onclick="deleteDoc('${data.id}')" class="text-red-600 font-bold">ลบ</button>
+               </div>`;
+          }
+
+          if(currentUser.id === "0000000000" || (data.tags && data.tags.includes(currentUser.id))) {
+            hasDoc = true;
+            const sigs = data.signatures || {};
+            const iHaveSigned = !!sigs[currentUser.id];
+            
+            let sigListHtml = '<ul class="text-sm mt-2 space-y-1 bg-gray-50 p-2 rounded">';
+            data.tags.forEach(tId => {
+              const fullName = getFullName(tId);
+              if(sigs[tId]) sigListHtml += `<li class="text-green-700 font-medium">✅ ${fullName} <span class="text-xs text-gray-500 font-normal">(${new Date(sigs[tId].timestamp).toLocaleString('th-TH')})</span></li>`;
+              else sigListHtml += `<li class="text-gray-400">⏳ ${fullName} (รอลงนาม)</li>`;
+            });
+            sigListHtml += '</ul>';
+
+            let actionBtn = '';
+            if(currentUser.id !== "0000000000") { 
+              if(iHaveSigned) actionBtn = `<span class="bg-green-100 text-green-800 px-4 py-2 rounded font-bold border border-green-300 inline-block mt-2">✅ ท่านลงนามเรียบร้อยแล้ว</span>`;
+              else actionBtn = `<button onclick="openSignModal('${data.id}', '${data.title.replace(/'/g,"")}')" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded font-bold shadow animate-pulse mt-2">✍️ กดเพื่อลงนาม</button>`;
+            }
+
+            listDiv.innerHTML += `
+              <div class="bg-white p-5 rounded-lg shadow border">
+                <div class="flex justify-between items-start mb-2">
+                  <h3 class="text-lg font-bold text-blue-900 flex-1">📄 ${data.title}</h3>
+                  <a href="${data.fileUrl}" target="_blank" class="bg-blue-100 text-blue-700 px-3 py-1 rounded text-sm hover:bg-blue-200 ml-2">🔍 เปิดดู PDF</a>
+                </div>
+                ${actionBtn}
+                <div class="mt-4 border-t pt-2"><p class="font-bold text-sm text-gray-600">สถานะการลงนาม:</p>${sigListHtml}</div>
+              </div>`;
+          }
+        });
+        if(!hasDoc) listDiv.innerHTML = '<p class="text-gray-500 bg-white p-4 rounded text-center">ไม่มีเอกสารที่ต้องดำเนินการ</p>';
+      });
+    }
+
+    document.getElementById('btnUploadDoc').addEventListener('click', () => {
+      uploadFileHandler('docTitle', 'docFileInput', '.doc-dept-tag', 'docUploadStatus', 'documents', 'อัพโหลดและสร้างรายการสำเร็จ!');
+    });
+    window.deleteDoc = (id) => { if(confirm('ยืนยันการลบเอกสารนี้?')) remove(ref(db, 'documents/' + id)); };
+
+    let currentActiveDocId = null;
+    window.openSignModal = (docId, title) => {
+      currentActiveDocId = docId;
+      document.getElementById('signModalDocName').innerText = `เอกสาร: ${title}`;
+      document.getElementById('confirmSignId').value = '';
+      document.getElementById('signError').classList.add('hidden');
+      document.getElementById('signModal').classList.remove('hidden');
+    };
+    window.closeSignModal = () => { document.getElementById('signModal').classList.add('hidden'); currentActiveDocId = null; };
+    document.getElementById('btnConfirmSign').addEventListener('click', () => {
+      const inputId = document.getElementById('confirmSignId').value;
+      if(inputId === currentUser.id) {
+        set(ref(db, `documents/${currentActiveDocId}/signatures/${currentUser.id}`), { timestamp: Date.now() }).then(() => {
+          alert('บันทึกลายมือชื่อเรียบร้อยแล้ว'); closeSignModal();
+        });
+      } else document.getElementById('signError').classList.remove('hidden');
+    });
+
+
+    // ================= ระบบคลังไฟล์เอกสาร (Archive) =================
+    function loadArchiveDocs() {
+      onValue(ref(db, 'archive_docs'), (snapshot) => {
+        allArchive = snapshot.val() || {};
+        const listDiv = document.getElementById('archiveList');
+        listDiv.innerHTML = '';
+        
+        let sortedDocs = Object.keys(allArchive).map(k => ({id: k, ...allArchive[k]})).sort((a,b) => b.createdAt - a.createdAt);
+        let hasDoc = false;
+
+        sortedDocs.forEach((data) => {
+          // สิทธิ์มองเห็น: คนโพสต์, แอดมิน, หรือคนที่โดน Tag
+          const canView = (currentUser.id === "0000000000" || data.authorId === currentUser.id || (data.tags && data.tags.includes(currentUser.id)));
+          if(canView) {
+            hasDoc = true;
+            const authorName = getFullName(data.authorId);
+            const dateStr = formatDateTime(data.createdAt);
+            
+            let tagNamesHtml = '';
+            if(data.tags && data.tags.length > 0) {
+              const tNames = data.tags.map(id => getFullName(id)).join(', ');
+              tagNamesHtml = `<p class="text-xs text-green-700 mt-2 bg-green-50 p-2 rounded"><strong>แจ้งหน่วยงาน:</strong> ${tNames}</p>`;
+            }
+
+            let delBtn = '';
+            if(currentUser.id === "0000000000" || data.authorId === currentUser.id) {
+               delBtn = `<button onclick="deleteArchive('${data.id}')" class="text-red-500 hover:text-red-700 font-bold text-sm ml-4">🗑️ ลบ</button>`;
+            }
+
+            listDiv.innerHTML += `
+              <div class="bg-gray-50 p-4 rounded-lg border hover:bg-gray-100 transition">
+                <div class="flex justify-between items-start mb-1">
+                  <h4 class="font-bold text-lg text-gray-800 flex-1 truncate pr-2">📂 ${data.title}</h4>
+                  <div class="flex items-center">
+                    <a href="${data.fileUrl}" target="_blank" class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 shadow-sm">📥 เปิด/ดาวน์โหลด</a>
+                    ${delBtn}
+                  </div>
+                </div>
+                <div class="text-xs text-gray-500">อัพโหลดโดย: <span class="font-bold">${authorName}</span> | ${dateStr}</div>
+                ${tagNamesHtml}
+              </div>
+            `;
+          }
+        });
+
+        if(!hasDoc) listDiv.innerHTML = '<p class="text-gray-500 text-center py-4 bg-gray-50 rounded">ไม่มีเอกสารในคลังที่คุณเข้าถึงได้</p>';
+      });
+    }
+
+    document.getElementById('btnUploadArchive').addEventListener('click', () => {
+      uploadFileHandler('archiveTitle', 'archiveFileInput', '.archive-dept-tag', 'archiveUploadStatus', 'archive_docs', 'อัพโหลดเข้าคลังสำเร็จ!');
+    });
+
+    window.deleteArchive = (id) => { if(confirm('ยืนยันการลบเอกสารจากคลัง?')) remove(ref(db, 'archive_docs/' + id)); };
+
+    // Common Upload Function for Doc & Archive
+    function uploadFileHandler(titleId, fileInputId, tagClass, statusId, dbPath, successMsg) {
+      const title = document.getElementById(titleId).value.trim();
+      const checkedTags = Array.from(document.querySelectorAll(`${tagClass}:checked`)).map(cb => cb.value);
+      const fileInput = document.getElementById(fileInputId);
+      const file = fileInput.files ? fileInput.files[0] : null;
+      const statusUI = document.getElementById(statusId);
+
+      if(!title || !file || checkedTags.length === 0) return alert('กรอกชื่อเอกสาร, แนบไฟล์ PDF และเลือก Tag ให้ครบถ้วน');
+
+      statusUI.classList.remove('hidden');
+      statusUI.innerHTML = '<span class="text-blue-600 animate-pulse">กำลังแปลงไฟล์ และอัพโหลด PDF กรุณารอสักครู่...</span>';
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64Content = event.target.result;
+        google.script.run.withSuccessHandler((result) => {
+            if(result && result.success) {
+              const dataToPush = { 
+                title: title, 
+                fileUrl: result.fileUrl, 
+                fileName: file.name, 
+                tags: checkedTags, 
+                createdAt: serverTimestamp(),
+                authorId: currentUser.id
+              };
+              if(dbPath === 'documents') dataToPush.signatures = {};
+
+              push(ref(db, dbPath), dataToPush).then(() => {
+                statusUI.innerHTML = `<span class="text-green-600">${successMsg}</span>`;
+                document.getElementById(titleId).value = ''; document.getElementById(fileInputId).value = '';
+                document.querySelectorAll(tagClass).forEach(cb => cb.checked = false);
+                setTimeout(() => { statusUI.innerHTML = ''; }, 5000);
+              });
+            } else statusUI.innerHTML = `<span class="text-red-600">Error: ${result ? result.error : 'เกิดข้อผิดพลาด'}</span>`;
+        }).withFailureHandler((err) => {
+            statusUI.innerHTML = `<span class="text-red-600">เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์</span>`;
+        }).uploadFileToDrive(base64Content, file.name, "application/pdf");
+      };
+      reader.readAsDataURL(file);
+    }
+
+
+    // ================= ระบบกระทู้ถาม-ตอบ (Forum) =================
+    let currentActiveTopicId = null;
+    let forumCommentsUnsubscribe = null;
+
+    function loadForumTopics() {
+      onValue(ref(db, 'forum/topics'), (snapshot) => {
+        allForumTopics = snapshot.val() || {};
+        renderForumList();
+        if(currentActiveTopicId && !allForumTopics[currentActiveTopicId]) {
+          closeForumDetail(); // ถ้ากระทู้ที่เปิดอยู่ถูกลบ ให้เด้งกลับหน้าแรก
+        } else if (currentActiveTopicId) {
+          renderForumTopicHeader(); // อัพเดทเนื้อหาหากมีการแก้ไข
+        }
+      });
+    }
+
+    function renderForumList() {
+      const listDiv = document.getElementById('forumTopicList');
+      listDiv.innerHTML = '';
+      
+      let sortedTopics = Object.keys(allForumTopics).map(k => ({id: k, ...allForumTopics[k]})).sort((a,b) => b.createdAt - a.createdAt);
+
+      if(sortedTopics.length === 0) {
+        listDiv.innerHTML = '<p class="text-center text-gray-500 mt-10">ยังไม่มีกระทู้ เริ่มตั้งกระทู้แรกเลย!</p>';
+        return;
+      }
+
+      sortedTopics.forEach(topic => {
+        const authorName = getFullName(topic.authorId);
+        const dateStr = formatDateTime(topic.createdAt);
+        listDiv.innerHTML += `
+          <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition cursor-pointer flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2" onclick="viewForumTopic('${topic.id}')">
+            <div class="overflow-hidden w-full">
+              <h3 class="font-bold text-lg text-blue-900 truncate">${topic.title}</h3>
+              <p class="text-xs text-gray-500 mt-1">โดย <span class="font-semibold text-gray-700">${authorName}</span> | 🕒 ${dateStr}</p>
+            </div>
+            <span class="bg-blue-50 text-blue-600 text-xs px-3 py-1 rounded-full whitespace-nowrap font-bold flex-shrink-0">คลิกอ่าน/ตอบ</span>
+          </div>
+        `;
+      });
+    }
+
+    window.openForumModal = () => {
+      document.getElementById('forumModalTitle').innerText = 'ตั้งกระทู้ใหม่';
+      document.getElementById('forumEditId').value = '';
+      document.getElementById('forumTopicTitle').value = '';
+      document.getElementById('forumTopicBody').value = '';
+      document.getElementById('btnSaveForumTopic').innerText = 'โพสต์กระทู้';
+      document.getElementById('forumModal').classList.remove('hidden');
+    };
+    window.closeForumModal = () => document.getElementById('forumModal').classList.add('hidden');
+
+    document.getElementById('btnSaveForumTopic').addEventListener('click', () => {
+      const title = document.getElementById('forumTopicTitle').value.trim();
+      const body = document.getElementById('forumTopicBody').value.trim();
+      const topicId = document.getElementById('forumEditId').value;
+
+      if(!title || !body) return alert('กรุณากรอกหัวข้อและรายละเอียดกระทู้');
+
+      if(topicId) {
+        // อัพเดทกระทู้
+        update(ref(db, `forum/topics/${topicId}`), { title: title, body: body }).then(() => {
+          closeForumModal();
+        });
+      } else {
+        // สร้างกระทู้ใหม่
+        push(ref(db, 'forum/topics'), {
+          title: title,
+          body: body,
+          authorId: currentUser.id,
+          createdAt: serverTimestamp()
+        }).then(() => { closeForumModal(); });
+      }
+    });
+
+    window.viewForumTopic = (topicId) => {
+      currentActiveTopicId = topicId;
+      document.getElementById('forumListView').classList.add('hidden');
+      document.getElementById('forumDetailView').classList.remove('hidden');
+      document.getElementById('forumDetailView').classList.add('flex');
+      
+      renderForumTopicHeader();
+      
+      if(forumCommentsUnsubscribe) off(ref(db, `forum/comments/${forumCommentsUnsubscribe}`));
+      forumCommentsUnsubscribe = topicId;
+
+      onValue(ref(db, `forum/comments/${topicId}`), (snapshot) => {
+        const comments = snapshot.val() || {};
+        const cDiv = document.getElementById('forumDetailComments');
+        cDiv.innerHTML = '';
+        
+        let sortedC = Object.keys(comments).map(k => ({id:k, ...comments[k]})).sort((a,b) => a.createdAt - b.createdAt);
+        
+        if(sortedC.length === 0) cDiv.innerHTML = '<p class="text-gray-500 text-sm bg-white p-4 rounded text-center border">ยังไม่มีความคิดเห็น เป็นคนแรกที่แสดงความคิดเห็น!</p>';
+
+        sortedC.forEach((c, index) => {
+          const cAuthor = getFullName(c.authorId);
+          const isOwnerAdmin = (currentUser.id === "0000000000" || currentUser.id === c.authorId);
+          
+          let actions = '';
+          if(isOwnerAdmin) {
+            actions = `
+              <div class="space-x-2">
+                <button onclick="editForumComment('${c.id}')" class="text-yellow-600 hover:text-yellow-800 text-xs font-bold">แก้ไข</button>
+                <button onclick="deleteForumComment('${c.id}')" class="text-red-500 hover:text-red-700 text-xs font-bold">ลบ</button>
+              </div>`;
+          }
+
+          cDiv.innerHTML += `
+            <div class="bg-white p-4 rounded shadow-sm border border-gray-100 flex gap-3">
+              <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center font-bold text-blue-700 flex-shrink-0">
+                ${index+1}
+              </div>
+              <div class="flex-1 w-full overflow-hidden">
+                <div class="flex justify-between items-start">
+                  <div class="text-sm font-bold text-gray-800">${cAuthor} <span class="text-xs text-gray-400 font-normal ml-2">${formatDateTime(c.createdAt)}</span></div>
+                  ${actions}
+                </div>
+                <div id="comment_text_${c.id}" class="mt-2 text-gray-700 whitespace-pre-wrap text-sm break-words">${c.body}</div>
+                <!-- สำหรับฟอร์มแก้ไข -->
+                <div id="comment_edit_${c.id}" class="hidden mt-2">
+                  <textarea id="comment_input_${c.id}" class="w-full p-2 border rounded text-sm mb-1" rows="2">${c.body}</textarea>
+                  <div class="flex gap-2">
+                    <button onclick="saveEditComment('${c.id}')" class="bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold">บันทึก</button>
+                    <button onclick="cancelEditComment('${c.id}')" class="bg-gray-300 px-3 py-1 rounded text-xs font-bold">ยกเลิก</button>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+        });
+      });
+    };
+
+    function renderForumTopicHeader() {
+      if(!currentActiveTopicId) return;
+      const topic = allForumTopics[currentActiveTopicId];
+      if(!topic) return;
+      
+      const headerDiv = document.getElementById('forumDetailHeader');
+      const authorName = getFullName(topic.authorId);
+      const isOwnerAdmin = (currentUser.id === "0000000000" || currentUser.id === topic.authorId);
+      
+      let actions = '';
+      if(isOwnerAdmin) {
+        actions = `
+          <div class="flex gap-2 mt-4 pt-4 border-t border-gray-100">
+            <button onclick="editForumTopic()" class="bg-yellow-50 text-yellow-700 px-3 py-1 rounded text-sm font-bold hover:bg-yellow-100 transition">✏️ แก้ไขกระทู้</button>
+            <button onclick="deleteForumTopic()" class="bg-red-50 text-red-600 px-3 py-1 rounded text-sm font-bold hover:bg-red-100 transition">🗑️ ลบกระทู้</button>
+          </div>`;
+      }
+
+      headerDiv.innerHTML = `
+        <h2 class="text-2xl font-bold text-blue-900 mb-2">${topic.title}</h2>
+        <div class="flex items-center gap-2 text-sm text-gray-500 mb-4 border-b pb-4">
+           <span>👤 โดย <strong>${authorName}</strong></span>
+           <span>•</span>
+           <span>🕒 ${formatDateTime(topic.createdAt)}</span>
+        </div>
+        <p class="text-gray-800 whitespace-pre-wrap leading-relaxed">${topic.body}</p>
+        ${actions}
+      `;
+    }
+
+    window.closeForumDetail = () => {
+      currentActiveTopicId = null;
+      document.getElementById('forumDetailView').classList.add('hidden');
+      document.getElementById('forumDetailView').classList.remove('flex');
+      document.getElementById('forumListView').classList.remove('hidden');
+      document.getElementById('forumListView').classList.add('flex');
+      if(forumCommentsUnsubscribe) off(ref(db, `forum/comments/${forumCommentsUnsubscribe}`));
+    };
+
+    // แก้ไข / ลบ กระทู้หลัก
+    window.editForumTopic = () => {
+      const topic = allForumTopics[currentActiveTopicId];
+      if(!topic) return;
+      document.getElementById('forumModalTitle').innerText = 'แก้ไขกระทู้';
+      document.getElementById('forumEditId').value = currentActiveTopicId;
+      document.getElementById('forumTopicTitle').value = topic.title;
+      document.getElementById('forumTopicBody').value = topic.body;
+      document.getElementById('btnSaveForumTopic').innerText = 'บันทึกการแก้ไข';
+      document.getElementById('forumModal').classList.remove('hidden');
+    };
+
+    window.deleteForumTopic = () => {
+      if(confirm('ยืนยันการลบกระทู้นี้พร้อมความคิดเห็นทั้งหมด?')) {
+        const tId = currentActiveTopicId;
+        closeForumDetail();
+        remove(ref(db, `forum/topics/${tId}`));
+        remove(ref(db, `forum/comments/${tId}`)); // ลบคอมเมนต์ในกระทู้ด้วย
+      }
+    };
+
+    // คอมเมนต์กระทู้
+    document.getElementById('btnSubmitForumComment').addEventListener('click', () => {
+      const input = document.getElementById('forumCommentInput');
+      const text = input.value.trim();
+      if(!text || !currentActiveTopicId) return;
+      
+      push(ref(db, `forum/comments/${currentActiveTopicId}`), {
+        body: text,
+        authorId: currentUser.id,
+        createdAt: serverTimestamp()
+      }).then(() => { input.value = ''; });
+    });
+
+    window.editForumComment = (cId) => {
+      document.getElementById(`comment_text_${cId}`).classList.add('hidden');
+      document.getElementById(`comment_edit_${cId}`).classList.remove('hidden');
+    };
+    window.cancelEditComment = (cId) => {
+      document.getElementById(`comment_text_${cId}`).classList.remove('hidden');
+      document.getElementById(`comment_edit_${cId}`).classList.add('hidden');
+    };
+    window.saveEditComment = (cId) => {
+      const newBody = document.getElementById(`comment_input_${cId}`).value.trim();
+      if(newBody) {
+        update(ref(db, `forum/comments/${currentActiveTopicId}/${cId}`), { body: newBody });
+      }
+    };
+    window.deleteForumComment = (cId) => {
+      if(confirm('ลบความคิดเห็นนี้ใช่หรือไม่?')) remove(ref(db, `forum/comments/${currentActiveTopicId}/${cId}`));
+    };
+
+
+    // ================= ระบบข้อความ (Chat) =================
+    let currentChatUserId = null;
+    let chatListenerUnsubscribe = null;
+
+    function clearUnread(senderId) {
+      if(!currentUser) return;
+      update(ref(db, `notifications/${currentUser.id}/unread_from`), { [senderId]: false });
+    }
+
+    function applyUnreadBadges(unreadObj) {
+      latestUnreadData = unreadObj || {};
+      let totalUnreadCount = 0;
+      
+      for (const id of Object.keys(userRoles)) {
+        if (id === currentUser.id) continue;
+        const badge = document.getElementById(`unread_badge_${id}`);
+        if (unreadObj && unreadObj[id] === true) {
+          if (badge) badge.classList.remove('hidden');
+          totalUnreadCount++;
+        } else {
+          if (badge) badge.classList.add('hidden');
+        }
+      }
+      
+      const tabBadge = document.getElementById('chatTabBadge');
+      const tabBadgeCount = document.getElementById('chatTabBadgeCount');
+      if (tabBadge) {
+        if (totalUnreadCount > 0) {
+          tabBadge.classList.remove('hidden');
+          if (tabBadgeCount) tabBadgeCount.innerText = totalUnreadCount;
+        } else tabBadge.classList.add('hidden');
+      }
+    }
+
+    function setupNotifications() {
+      if (!currentUser) return;
+      onValue(ref(db, `notifications/${currentUser.id}/unread_from`), (snapshot) => { applyUnreadBadges(snapshot.val() || {}); });
+      let isFirstLoad = true;
+      onValue(ref(db, `notifications/${currentUser.id}/lastTrigger`), (snapshot) => {
+        if (isFirstLoad) { isFirstLoad = false; return; }
+        const val = snapshot.val();
+        if (val && val.sender && val.sender !== currentUser.id) {
+          const isChatTabVisible = !document.getElementById('tabChat').classList.contains('hidden');
+          if (isChatTabVisible && currentChatUserId === val.sender) clearUnread(val.sender);
+          else {
+             try { const sound = document.getElementById('chatSound'); if(sound){ sound.currentTime = 0; sound.play().catch(()=>{});} } catch(e) {}
+          }
+        }
+      });
+    }
+
+    function renderChatContactList() {
+      const listDiv = document.getElementById('chatContactList');
+      listDiv.innerHTML = '';
+      
+      for (const [id, data] of Object.entries(userRoles)) {
+        if(id === currentUser.id) continue;
+        const fullName = getFullName(id);
+        listDiv.innerHTML += `
+          <div class="p-3 bg-white border rounded shadow-sm cursor-pointer hover:bg-blue-50 transition chat-contact flex justify-between items-center" id="contact_${id}" onclick="selectChat('${id}', '${fullName}')">
+            <div class="overflow-hidden pr-1">
+              <div class="font-bold text-gray-800 text-sm truncate">${data.role}</div>
+              <div class="text-xs text-gray-500 truncate">${userProfiles[id]?.name || ''}</div>
+            </div>
+            <span id="unread_badge_${id}" class="hidden bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 animate-pulse">ข้อความใหม่</span>
+          </div>
+        `;
+      }
+      applyUnreadBadges(latestUnreadData);
+    }
+
+    window.deleteChatMessage = (chatId, msgId) => {
+      if (confirm('คุณต้องการลบข้อความนี้ใช่หรือไม่?')) remove(ref(db, `messages/${chatId}/${msgId}`));
+    };
+
+    window.selectChat = (userId, fullName) => {
+      currentChatUserId = userId;
+      clearUnread(userId);
+
+      document.querySelectorAll('.chat-contact').forEach(el => el.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50'));
+      const contactEl = document.getElementById(`contact_${userId}`);
+      if(contactEl) contactEl.classList.add('ring-2', 'ring-blue-500', 'bg-blue-50');
+      
+      document.getElementById('chatHeader').innerHTML = `สนทนากับ: <span class="text-blue-700">${fullName}</span>`;
+      document.getElementById('chatInput').disabled = false;
+      document.getElementById('btnSendChat').disabled = false;
+      document.getElementById('chatMessages').innerHTML = '<div class="text-center text-gray-400 mt-10">กำลังโหลดข้อความ...</div>';
+
+      const ids = [currentUser.id, userId].sort();
+      const chatId = `${ids[0]}_${ids[1]}`;
+
+      if(chatListenerUnsubscribe) off(ref(db, `messages/${chatListenerUnsubscribe}`));
+      chatListenerUnsubscribe = chatId;
+
+      onValue(ref(db, `messages/${chatId}`), (snapshot) => {
+        const msgs = snapshot.val() || {};
+        const msgDiv = document.getElementById('chatMessages');
+        msgDiv.innerHTML = '';
+
+        let sortedMsgs = Object.keys(msgs).map(key => ({ msgId: key, ...msgs[key] })).sort((a,b) => {
+           const timeA = (typeof a.timestamp === 'number') ? a.timestamp : Date.now();
+           const timeB = (typeof b.timestamp === 'number') ? b.timestamp : Date.now();
+           return timeA - timeB;
+        });
+        
+        if(sortedMsgs.length === 0) msgDiv.innerHTML = '<div class="text-center text-gray-400 mt-10">ยังไม่มีข้อความ เริ่มต้นทักทายเลย!</div>';
+
+        sortedMsgs.forEach(m => {
+          const isMine = m.senderId === currentUser.id;
+          const bubbleClass = isMine ? 'msg-mine' : 'msg-other';
+          
+          let timeStr = (typeof m.timestamp === 'number') ? new Date(m.timestamp).toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'}) : '';
+          let contentHtml = '';
+          if(m.imageUrl) {
+            const displayImgUrl = getDirectImageUrl(m.imageUrl);
+            contentHtml += `<a href="${m.imageUrl}" target="_blank"><img src="${displayImgUrl}" class="max-w-full h-auto rounded-lg mb-1 shadow-sm hover:opacity-90 transition cursor-pointer" style="max-height: 250px;" alt="รูปภาพ" onerror="this.onerror=null; this.src='${m.imageUrl}';"></a>`;
+          }
+          if(m.text) contentHtml += `<p class="whitespace-pre-wrap">${m.text}</p>`;
+
+          let deleteBtnHtml = (isMine || currentUser.id === "0000000000") ? `<button onclick="deleteChatMessage('${chatId}', '${m.msgId}')" class="text-gray-400 hover:text-red-500 text-xs ml-2 cursor-pointer transition" title="ลบข้อความ">🗑️</button>` : '';
+
+          msgDiv.innerHTML += `
+            <div class="flex flex-col max-w-[80%] ${isMine ? 'self-end' : 'self-start'} group relative">
+              <div class="p-3 shadow-sm text-sm ${bubbleClass}">${contentHtml}</div>
+              <div class="flex items-center ${isMine ? 'justify-end pr-1' : 'justify-start pl-1'} mt-1">
+                <span class="text-[10px] text-gray-400">${timeStr}</span>${deleteBtnHtml}
+              </div>
+            </div>`;
+        });
+
+        if(sortedMsgs.length > 0 && sortedMsgs[sortedMsgs.length - 1].senderId === currentChatUserId) clearUnread(currentChatUserId);
+        setTimeout(() => { msgDiv.scrollTop = msgDiv.scrollHeight; }, 100);
+      });
+    };
+
+    document.getElementById('chatImgInput').addEventListener('change', function(e) {
+      if(!currentChatUserId) return alert('กรุณาเลือกผู้ติดต่อทางซ้ายมือก่อน');
+      const file = e.target.files[0];
+      if(!file) return;
+
+      const status = document.getElementById('chatUploadStatus');
+      status.classList.remove('hidden');
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 800;
+          let width = img.width; let height = img.height;
+          if (width > MAX_WIDTH) { height = Math.round((height * MAX_WIDTH) / width); width = MAX_WIDTH; }
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
+          
+          const resizedBase64 = canvas.toDataURL('image/jpeg', 0.8);
+          google.script.run.withSuccessHandler((result) => {
+            status.classList.add('hidden');
+            if(result.success) sendChatMessage("", result.directImageUrl || ("https://lh3.googleusercontent.com/d/" + result.fileId) || result.fileUrl); 
+            else alert('อัพโหลดรูปภาพล้มเหลว: ' + result.error);
+          }).withFailureHandler((err) => { status.classList.add('hidden'); alert('เกิดข้อผิดพลาด: ' + err); })
+            .uploadFileToDrive(resizedBase64, "chat_image_" + Date.now() + ".jpg", 'image/jpeg');
+        }
+        img.onerror = () => { status.classList.add('hidden'); alert('ไฟล์รูปภาพไม่ถูกต้อง'); }
+        img.src = event.target.result;
+      }
+      reader.readAsDataURL(file); e.target.value = ''; 
+    });
+
+    document.getElementById('btnSendChat').addEventListener('click', () => {
+      const input = document.getElementById('chatInput');
+      const text = input.value.trim();
+      if(text) { sendChatMessage(text, null); input.value = ''; }
+    });
+    document.getElementById('chatInput').addEventListener('keypress', (e) => { if(e.key === 'Enter') document.getElementById('btnSendChat').click(); });
+
+    function sendChatMessage(text, imageUrl) {
+      if(!currentChatUserId) return;
+      const ids = [currentUser.id, currentChatUserId].sort();
+      const chatId = `${ids[0]}_${ids[1]}`;
+      push(ref(db, `messages/${chatId}`), { senderId: currentUser.id, text: text || "", imageUrl: imageUrl || "", timestamp: serverTimestamp() });
+      update(ref(db, `notifications/${currentChatUserId}/unread_from`), { [currentUser.id]: true });
+      set(ref(db, `notifications/${currentChatUserId}/lastTrigger`), { sender: currentUser.id, time: Date.now() });
+    }
+
   </script>
 </body>
 </html>
